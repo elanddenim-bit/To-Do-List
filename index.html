@@ -369,6 +369,7 @@ var S = {
   saveMsg: "",
   parseErr: "",
   moveFor: null,   // 날짜 이동 패널이 열린 항목 id
+  timeFor: null,   // 시간 편집 패널이 열린 항목 id
   noteFor: null,   // 완료 멘트 입력이 열린 항목 id
   weekOff: 0,      // 주간 요약 오프셋 (0=이번 주)
   calY: _now.getFullYear(),
@@ -517,6 +518,31 @@ window.actMoveConfirm = async function(id){
   await persistToday(); render();
 };
 window.actMoveCancel = function(){ S.moveFor=null; render(); };
+
+// ---- 시간 지정/수정 ----
+window.actTimeOpen = function(id){
+  S.timeFor = (S.timeFor===id) ? null : id;
+  S.moveFor=null; S.noteFor=null;
+  render();
+};
+window.actTimeSave = function(id){
+  var el=document.getElementById("tmInp-"+id);
+  if(!el) return;
+  for(var i=0;i<S.today.todos.length;i++){
+    if(S.today.todos[i].id===id){
+      if(el.value) S.today.todos[i].time=el.value;
+      else delete S.today.todos[i].time;
+    }
+  }
+  S.timeFor=null;
+  persistToday(); render();
+};
+window.actTimeClear = function(id){
+  for(var i=0;i<S.today.todos.length;i++)
+    if(S.today.todos[i].id===id) delete S.today.todos[i].time;
+  S.timeFor=null;
+  persistToday(); render();
+};
 
 // ---------- 반복 업무 ----------
 var DOW_LABEL=["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
@@ -836,7 +862,7 @@ function rowHTML(t, opts){
     h+='<span class="chk'+(t.done?' done':'')+'" style="cursor:default;border-color:'+(t.done?'var(--navy)':'var(--hair)')+'">'+(t.done?'✓':'')+'</span>';
   }
   h+='<span class="dot '+t.priority+'"></span>';
-  if(t.time) h+='<span class="tbadge">'+t.time+'</span>';
+  if(t.time) h+='<span class="tbadge"'+(opts.timeEdit&&!t.done?' style="cursor:pointer;" onclick="actTimeOpen(\''+t.id+'\')"':'')+'>'+t.time+'</span>';
   h+='<span class="txt'+(t.done?' done':'')+'">'+esc(t.text);
   if(t.carriedFrom){
     var cc=t.carryCount||1;
@@ -846,6 +872,7 @@ function rowHTML(t, opts){
   if(t.done && t.doneNote) h+='<small class="donenote">'+esc(t.doneNote)+'</small>';
   h+='</span>';
   if(opts.note && t.done) h+='<button class="mini" onclick="actNoteOpen(\''+t.id+'\')">멘트</button>';
+  if(opts.timeEdit && !t.done && !t.time) h+='<button class="mini" onclick="actTimeOpen(\''+t.id+'\')">시간</button>';
   if(opts.move && !t.done) h+='<button class="mini" onclick="actMoveOpen(\''+t.id+'\')">이동</button>';
   if(opts.carry && !t.done) h+='<button class="mini" onclick="actCarryOne(\''+t.id+'\')">내일로</button>';
   if(opts.del) h+='<button class="del" onclick="'+opts.del+'(\''+t.id+'\')" aria-label="삭제">×</button>';
@@ -856,6 +883,14 @@ function rowHTML(t, opts){
       +'<input type="date" id="mvDate-'+t.id+'" value="'+S.tmKey+'">'
       +'<button class="mini fill" onclick="actMoveConfirm(\''+t.id+'\')">이동</button>'
       +'<button class="mini" onclick="actMoveCancel()">취소</button></div>';
+  }
+  // 시간 편집 패널
+  if(opts.timeEdit && S.timeFor===t.id && !t.done){
+    h+='<div class="inline-panel">'
+      +'<input type="time" id="tmInp-'+t.id+'" value="'+(t.time||"")+'" style="border:1px solid var(--hair); border-radius:6px; padding:0 8px; height:38px; font-size:14px; color:var(--navy); font-family:inherit; background:#fff;">'
+      +'<button class="mini fill" onclick="actTimeSave(\''+t.id+'\')">저장</button>'
+      +(t.time?'<button class="mini danger" style="color:var(--red); border-color:var(--red);" onclick="actTimeClear(\''+t.id+'\')">시간 제거</button>':'')
+      +'<button class="mini" onclick="actTimeOpen(\''+t.id+'\')">취소</button></div>';
   }
   // 완료 멘트 입력 패널
   if(opts.note && S.noteFor===t.id && t.done){
@@ -936,7 +971,7 @@ function render(){
 
   if(S.mode==="in"){
     var listH = S.today.todos.length
-      ? sortTodos(S.today.todos).map(function(t){return rowHTML(t,{toggle:true, move:true, note:true, del:"actDelToday"});}).join("")
+      ? sortTodos(S.today.todos).map(function(t){return rowHTML(t,{toggle:true, move:true, note:true, timeEdit:true, del:"actDelToday"});}).join("")
       : '<p class="empty">아직 등록된 업무가 없습니다. 오늘 할 일을 추가해 하루를 시작하세요.</p>';
     v.innerHTML =
       '<div class="card"><div class="card-h accent"><h2>오늘의 TO-DO</h2><span class="savemsg"></span></div>'
@@ -953,7 +988,7 @@ function render(){
     if(undone.length){
       undoneH='<div class="sub-h"><b>미완료 '+undone.length+'건</b>'
         +'<button class="mini fill" onclick="actCarryAll()">전체 내일로 이월</button></div>'
-        + sortTodos(undone).map(function(t){return rowHTML(t,{toggle:true, move:true, carry:true, del:"actDelToday"});}).join("");
+        + sortTodos(undone).map(function(t){return rowHTML(t,{toggle:true, move:true, carry:true, timeEdit:true, del:"actDelToday"});}).join("");
     }
     var doneH="";
     if(doneList.length){
