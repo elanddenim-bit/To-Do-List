@@ -64,6 +64,14 @@
   .mini.fill{background:var(--navy); color:#fff; border-color:var(--navy);}
   .del{font-size:16px; color:var(--grey); background:none; border:none; cursor:pointer; padding:0 3px; flex-shrink:0;}
   .addform{display:flex; gap:7px; margin-top:12px;}
+  .tbadge{
+    font-size:11px; font-weight:700; color:#fff; background:var(--navy);
+    border-radius:4px; padding:2px 6px; flex-shrink:0; letter-spacing:.3px;
+  }
+  .addform input[type=time]{
+    border:1px solid var(--hair); border-radius:6px; padding:0 4px; font-size:13px;
+    color:var(--navy); background:#fff; height:42px; font-family:inherit; width:86px; flex-shrink:0;
+  }
   .addform select{
     border:1px solid var(--hair); border-radius:6px; padding:0 4px; font-size:13px;
     color:var(--navy); background:#fff; height:42px; font-family:inherit;
@@ -212,6 +220,9 @@ var ORDER={high:0,mid:1,low:2};
 function sortTodos(list){
   return list.slice().sort(function(a,b){
     if(a.done!==b.done) return a.done?1:-1;
+    var at=a.time||"", bt=b.time||"";
+    if(!!at!==!!bt) return at?-1:1;          // 시간 지정 항목이 먼저
+    if(at && bt && at!==bt) return at<bt?-1:1; // 시간순
     return ORDER[a.priority]-ORDER[b.priority];
   });
 }
@@ -426,15 +437,23 @@ async function persistSched(){ DB.sched=S.sched; setSaveMsg(await saveAll()); }
 // ---------- 액션: TO-DO ----------
 window.actAddToday = function(){
   var inp=document.getElementById("inpToday"), sel=document.getElementById("selToday");
+  var tm=document.getElementById("timeToday");
   var t=inp.value.trim(); if(!t) return;
-  S.today.todos.push({id:uid(), text:t, priority:sel.value, done:false});
-  inp.value=""; persistToday(); render(); document.getElementById("inpToday").focus();
+  var item={id:uid(), text:t, priority:sel.value, done:false};
+  if(tm && tm.value) item.time=tm.value;
+  S.today.todos.push(item);
+  inp.value=""; if(tm) tm.value="";
+  persistToday(); render(); document.getElementById("inpToday").focus();
 };
 window.actAddTomorrow = function(){
   var inp=document.getElementById("inpTm"), sel=document.getElementById("selTm");
+  var tm=document.getElementById("timeTm");
   var t=inp.value.trim(); if(!t) return;
-  S.tomorrow.todos.push({id:uid(), text:t, priority:sel.value, done:false});
-  inp.value=""; persistTomorrow(); render(); document.getElementById("inpTm").focus();
+  var item={id:uid(), text:t, priority:sel.value, done:false};
+  if(tm && tm.value) item.time=tm.value;
+  S.tomorrow.todos.push(item);
+  inp.value=""; if(tm) tm.value="";
+  persistTomorrow(); render(); document.getElementById("inpTm").focus();
 };
 window.actToggle = function(id){
   var becameDone=false;
@@ -484,6 +503,7 @@ window.actMoveConfirm = async function(id){
   for(var i=0;i<S.today.todos.length;i++) if(S.today.todos[i].id===id) item=S.today.todos[i];
   if(!item) return;
   var moved={id:uid(), text:item.text, priority:item.priority, done:false, carriedFrom:S.tKey, carryCount:(item.carryCount||0)+1};
+  if(item.time) moved.time=item.time;
   if(dest===S.tmKey){
     S.tomorrow.todos.push(moved);
     setDay(S.tmKey, S.tomorrow);
@@ -659,7 +679,7 @@ window.actWeekCopy = async function(){
   if(st.doneItems.length){
     lines.push("■ 완료");
     st.doneItems.forEach(function(x){
-      var l="- ("+PRI_LABEL[x.t.priority]+") "+x.t.text;
+      var l="- ("+PRI_LABEL[x.t.priority]+") "+(x.t.time? x.t.time+" ":"")+x.t.text;
       if(x.t.doneNote) l+=" — "+x.t.doneNote;
       l+=" ("+fmtShort(x.k)+")";
       lines.push(l);
@@ -748,7 +768,9 @@ window.actCarryOne = function(id){
   var item=null;
   for(var i=0;i<S.today.todos.length;i++) if(S.today.todos[i].id===id) item=S.today.todos[i];
   if(!item) return;
-  S.tomorrow.todos.push({id:uid(), text:item.text, priority:item.priority, done:false, carriedFrom:S.tKey, carryCount:(item.carryCount||0)+1});
+  var cp={id:uid(), text:item.text, priority:item.priority, done:false, carriedFrom:S.tKey, carryCount:(item.carryCount||0)+1};
+  if(item.time) cp.time=item.time;
+  S.tomorrow.todos.push(cp);
   S.today.todos=S.today.todos.filter(function(x){return x.id!==id;});
   setDay(S.tmKey, S.tomorrow);
   persistToday(); render();
@@ -757,7 +779,9 @@ window.actCarryAll = function(){
   var undone=S.today.todos.filter(function(x){return !x.done;});
   if(!undone.length) return;
   undone.forEach(function(item){
-    S.tomorrow.todos.push({id:uid(), text:item.text, priority:item.priority, done:false, carriedFrom:S.tKey, carryCount:(item.carryCount||0)+1});
+    var cp={id:uid(), text:item.text, priority:item.priority, done:false, carriedFrom:S.tKey, carryCount:(item.carryCount||0)+1};
+    if(item.time) cp.time=item.time;
+    S.tomorrow.todos.push(cp);
   });
   S.today.todos=S.today.todos.filter(function(x){return x.done;});
   setDay(S.tmKey, S.tomorrow);
@@ -812,6 +836,7 @@ function rowHTML(t, opts){
     h+='<span class="chk'+(t.done?' done':'')+'" style="cursor:default;border-color:'+(t.done?'var(--navy)':'var(--hair)')+'">'+(t.done?'✓':'')+'</span>';
   }
   h+='<span class="dot '+t.priority+'"></span>';
+  if(t.time) h+='<span class="tbadge">'+t.time+'</span>';
   h+='<span class="txt'+(t.done?' done':'')+'">'+esc(t.text);
   if(t.carriedFrom){
     var cc=t.carryCount||1;
@@ -857,9 +882,10 @@ function progressHTML(done,total){
     +'<span class="pct">'+pct+'<small>%</small></span></div>'
     +'<div class="bar"><div class="'+(pct===100?'full':'')+'" style="width:'+pct+'%"></div></div>';
 }
-function addFormHTML(inpId, selId, fn, ph){
+function addFormHTML(inpId, selId, fn, ph, timeId){
   return '<div class="addform">'
     +'<select id="'+selId+'" aria-label="우선순위"><option value="high">상</option><option value="mid" selected>중</option><option value="low">하</option></select>'
+    +'<input type="time" id="'+timeId+'" aria-label="시간 (선택)">'
     +'<input id="'+inpId+'" placeholder="'+ph+'" onkeydown="if(event.key===\'Enter\'){'+fn+'();}">'
     +'<button class="go" onclick="'+fn+'()">추가</button></div>';
 }
@@ -916,7 +942,7 @@ function render(){
       '<div class="card"><div class="card-h accent"><h2>오늘의 TO-DO</h2><span class="savemsg"></span></div>'
       + '<div style="margin-top:10px">' + pinsFor(S.tKey) + '</div>'
       + listH
-      + addFormHTML("inpToday","selToday","actAddToday","오늘 할 일 입력")
+      + addFormHTML("inpToday","selToday","actAddToday","오늘 할 일 입력","timeToday")
       + '</div>'
       + (S.today.todos.length ? '<div class="card"><div class="card-h"><h2>진행 현황</h2></div>'+progressHTML(doneCount,S.today.todos.length)+'</div>' : '');
 
@@ -942,7 +968,7 @@ function render(){
       + progressHTML(doneCount,S.today.todos.length) + undoneH + doneH + '</div>'
       + '<div class="card"><div class="card-h"><h2>익일 TO-DO — '+fmtShort(S.tmKey)+'</h2></div>'
       + '<div style="margin-top:10px">' + pinsFor(S.tmKey) + '</div>'
-      + tmH + addFormHTML("inpTm","selTm","actAddTomorrow","내일 할 일 입력") + '</div>'
+      + tmH + addFormHTML("inpTm","selTm","actAddTomorrow","내일 할 일 입력","timeTm") + '</div>'
       + '<div class="card"><div class="card-h"><h2>오늘 메모</h2><span class="savemsg"></span></div>'
       + '<textarea id="noteBox" placeholder="특이사항, 인수인계, 회고 등을 남겨두세요. 입력 후 바깥을 누르면 저장됩니다." onblur="actSaveNote()">'+esc(S.today.note||"")+'</textarea></div>';
 
