@@ -280,6 +280,8 @@ function emptyDay(){return {todos:[], note:""};}
 var DB = { days:{}, sched:[], recur:[], recurSeed:{} };
 var LAST_ERR = "";
 var STORE_OK = null; // true: 클라우드 연동 / false: 이 세션 동안만 유지
+var LOADED = false;  // 이 세션에서 서버 데이터를 성공적으로 읽었는가 (덮어쓰기 방지용)
+var SNAPPED = false; // 세션당 1회 백업 스냅샷
 
 async function loadAll(){
   if(!configured()){ STORE_OK=false; LAST_ERR="설정 전"; return; }
@@ -298,11 +300,26 @@ async function loadAll(){
       // 클라우드가 비어 있으면, 이 기기의 Claude 저장 데이터가 있을 경우 자동 이전
       await migrateFromClaude();
     }
-    STORE_OK=true; LAST_ERR="";
+    STORE_OK=true; LAST_ERR=""; LOADED=true;
+    snapshotOnce();
   }catch(e){
     STORE_OK=false;
     LAST_ERR=(e && e.message)?e.message:String(e);
   }
+}
+// 하루 1회(세션당 1회) 요일별 순환 백업 — 실수로 데이터가 덮여도 최근 7일 내 복구 가능
+async function snapshotOnce(){
+  if(SNAPPED) return;
+  if(!Object.keys(DB.days).length && !DB.sched.length) return; // 빈 데이터는 백업하지 않음
+  SNAPPED=true;
+  try{
+    var dow=new Date().getDay();
+    await fetch(SUPA_URL+"/rest/v1/workdata",{
+      method:"POST",
+      headers:hdrs({"Prefer":"resolution=merge-duplicates"}),
+      body:JSON.stringify([{id:WORKSPACE+"-bak-"+dow, data:DB, updated_at:new Date().toISOString()}])
+    });
+  }catch(e){}
 }
 async function migrateFromClaude(){
   try{
@@ -320,6 +337,20 @@ async function migrateFromClaude(){
 }
 async function saveAll(){
   if(!configured()){ LAST_ERR="클라우드 설정 전"; return false; }
+  if(!LOADED){
+    // 서버 데이터를 아직 읽지 못했다면, 먼저 다시 읽어와 병합한 뒤 저장 (빈 데이터 덮어쓰기 방지)
+    var myToday=S.today, myTomorrow=S.tomorrow;
+    await loadAll();
+    if(!LOADED){
+      LAST_ERR="서버 미연결 — 데이터 보호를 위해 저장 보류 중";
+      updateBanner();
+      return false;
+    }
+    DB.days[S.tKey]=myToday;
+    DB.days[S.tmKey]=myTomorrow;
+    if(!DB.sched.length && S.sched.length) DB.sched=S.sched;
+    S.today=myToday; S.tomorrow=myTomorrow; S.sched=DB.sched; S.index=dayIndex();
+  }
   try{
     var r=await fetch(SUPA_URL+"/rest/v1/workdata",{
       method:"POST",
