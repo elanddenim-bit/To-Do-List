@@ -37,10 +37,14 @@
 ## 데이터
 - Supabase 테이블 `workdata(id text PK, data jsonb, updated_at)`. 생성 SQL 은 저장소에 없음.
 - `DB = {days:{"YYYY-MM-DD":{todos:[…], note:""}}, sched:[{id,title,start,end}], recur:[{id,text,priority,type:'w'|'m',n}], recurSeed:{"<recurId>:<date>":1}}`.
-- todo: `{id, text, priority:'high'|'mid'|'low', done, time?:"HH:MM", doneNote?, recur?:true}`. 정렬 `ORDER={high:0,mid:1,low:2}` 후 시간순.
+- todo: `{id, text, priority:'high'|'mid'|'low', done, time?:"HH:MM", doneNote?, recur?:true, src?:'brief'}`. `src:'brief'`는 요약 붙여넣기로 추가된 항목. 정렬 `ORDER={high:0,mid:1,low:2}` 후 시간순.
 - 반복 업무 `seedRecur()`: 오늘·내일 날짜에 매칭되면 1회만 TO-DO 추가(`recurSeed` 로 중복 방지). `type:'w'` 는 `n`=요일(0=일), `'m'` 은 `n`=일자.
 - 가져오기 병합 규칙: 없는 날짜 추가, 있는 날짜는 text 중복 아닌 todo 만 추가, note 는 비었을 때만, sched 는 title+start+end 중복 제외.
 - 세션 상태 `S = {mode:'in'|'out'|'sched'|'history', tKey, tmKey, today, tomorrow, sched, index, viewDay, weekOff, calY, calM, moveFor, timeFor, noteFor, …}`.
+
+## 요약 붙여넣기 (2026-10-08)
+- 출근 탭 "메일·위챗 요약 붙여넣기" 카드: 아침 메일 업무표(🔴→high, 🟡→mid, ⚪·제외 무시)나 기업위챗 요약(①③→high, ②→mid, ④ 무시)을 붙여넣으면 `parseBrief()`가 후보를 만들고, 체크한 항목만 오늘 TO-DO에 추가. 앞에 [메일]/[위챗] 표시, 이미 있는 항목(앞 40자 공백 제거 비교)은 기본 해제.
+- 메일 업무표는 별도 예약 작업이 사용자 PC의 Outlook 내보내기 파일로 매일 06:50에 만든다(이 저장소 밖).
 
 ## 도메인 규칙
 - 하루 흐름: 출근 시 오늘 TO-DO 확인 → 퇴근 시 결과 체크·완료 멘트·익일 TO-DO 작성·미완료 이월.

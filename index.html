@@ -171,6 +171,14 @@
   .cell .n.sun{color:var(--red);}
   .cell .mark{width:70%; height:4px; border-radius:2px; background:var(--navy);}
   .cell.off{opacity:0;}
+  /* 메일·위챗 요약 붙여넣기 */
+  .paste-prev{margin-top:10px;}
+  .paste-row{display:flex; gap:8px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--hair); font-size:14px;}
+  .paste-row:last-child{border-bottom:0;}
+  .paste-row input[type=checkbox]{margin-top:3px; flex:0 0 auto;}
+  .paste-row .ptxt{flex:1; min-width:0; overflow-wrap:anywhere;}
+  .paste-row select{flex:0 0 auto; font-size:12px; padding:2px 4px;}
+  .paste-note{font-size:12px; color:var(--grey); margin:6px 0 0;}
 </style>
 </head>
 <body>
@@ -992,6 +1000,98 @@ function schedListHTML(){
 }
 
 // ---------- 화면 ----------
+// ---------- 메일·위챗 요약 붙여넣기 → TO-DO ----------
+// 아침 메일 업무표(🔴🟡⚪)와 기업위챗 요약(①②③④)을 그대로 붙여넣으면 할 일 후보로 나눈다.
+function briefNorm(t){ return String(t||"").replace(/\s+/g,"").replace(/^\[(메일|위챗)\]/,"").slice(0,40); }
+function parseBrief(text){
+  var lines=String(text||"").split(/\r?\n/);
+  var isWecom=/[①②③④]/.test(text);
+  var src=isWecom?"위챗":"메일";
+  var sec=null, out=[], seen={};
+  for(var i=0;i<lines.length;i++){
+    var raw=lines[i], l=raw.replace(/\*\*/g,"").replace(/^#+\s*/,"").trim();
+    if(!l) continue;
+    if(/^메일\s*\d+건/.test(l) || /^📋/.test(l) || /24시간\s*메시지\s*요약/.test(l)) continue;
+    // 구역 머리
+    var head=null;
+    if(/^🔴|오늘\s*바로/.test(l)) head="high";
+    else if(/^🟡|검토.*회신/.test(l)) head="mid";
+    else if(/^⚪|참고.*종결|^제외/.test(l)) head="skip";
+    else if(/^①/.test(l)) head="high";
+    else if(/^②/.test(l)) head="mid";
+    else if(/^③/.test(l)) head="high";
+    else if(/^④/.test(l)) head="skip";
+    if(head){
+      sec=head;
+      // "① 질문 … : 내용" 처럼 머리와 내용이 한 줄이면 뒤쪽을 항목으로
+      var tail=l.replace(/^[🔴🟡⚪①②③④]\s*/,"");
+      var m=tail.match(/[:：]\s*(.+)$/);
+      if(m && sec!=="skip" && !/^없음$/.test(m[1].trim())) l=m[1]; else continue;
+    }
+    if(!sec || sec==="skip") continue;
+    if(/^(없음|无|해당\s*없음)$/.test(l)) continue;
+    // 들여쓴 보조 줄은 앞 항목에 붙은 설명으로 보고 건너뜀
+    if(/^\s{2,}[-•·]/.test(raw)) continue;
+    var t=l.replace(/^(\d+[.)]|[-•·*]|•)\s*/,"").trim();
+    if(t.length<4) continue;
+    if(t.length>120) t=t.slice(0,118)+"…";
+    var key=briefNorm(t);
+    if(seen[key]) continue; seen[key]=1;
+    out.push({text:"["+src+"] "+t, priority:sec, on:true});
+  }
+  return out;
+}
+window.actPasteParse = function(){
+  var ta=document.getElementById("inpPaste"); if(!ta) return;
+  S.pasteText=ta.value;
+  var have={}; S.today.todos.forEach(function(x){ have[briefNorm(x.text)]=1; });
+  S.pastePrev=parseBrief(ta.value).map(function(c){ c.dup=!!have[briefNorm(c.text)]; if(c.dup) c.on=false; return c; });
+  S.pasteOpen=true; render();
+};
+window.actPasteToggle = function(i){ if(S.pastePrev&&S.pastePrev[i]){ S.pastePrev[i].on=!S.pastePrev[i].on; } };
+window.actPastePri = function(i,v){ if(S.pastePrev&&S.pastePrev[i]){ S.pastePrev[i].priority=v; } };
+window.actPasteAdd = function(){
+  var n=0;
+  (S.pastePrev||[]).forEach(function(c){
+    if(!c.on) return;
+    S.today.todos.push({id:uid(), text:c.text, priority:c.priority, done:false, src:"brief"});
+    n++;
+  });
+  S.pastePrev=null; S.pasteText=""; S.pasteOpen=false;
+  if(n){ persistToday(); }
+  render();
+};
+window.actPasteClose = function(){ S.pastePrev=null; S.pasteText=""; S.pasteOpen=!S.pasteOpen; render(); };
+function pasteCardHTML(){
+  if(!S.pasteOpen){
+    return '<div class="card"><div class="card-h"><h2>메일·위챗 요약 붙여넣기</h2>'
+      +'<button class="mini" onclick="actPasteClose()">열기</button></div>'
+      +'<p class="paste-note">아침 메일 업무표나 기업위챗 요약을 붙여넣으면 할 일로 바꿔 줍니다.</p></div>';
+  }
+  var h='<div class="card"><div class="card-h"><h2>메일·위챗 요약 붙여넣기</h2>'
+    +'<button class="mini" onclick="actPasteClose()">닫기</button></div>'
+    +'<textarea id="inpPaste" rows="6" placeholder="메일 업무표(🔴🟡⚪) 또는 기업위챗 요약(①②③④)을 그대로 붙여넣으세요">'+esc(S.pasteText||"")+'</textarea>'
+    +'<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">'
+    +'<button class="mini fill" onclick="actPasteParse()">할 일로 나누기</button></div>';
+  if(S.pastePrev){
+    if(!S.pastePrev.length){
+      h+='<p class="paste-note">할 일로 바꿀 항목을 찾지 못했습니다. 🔴·🟡 또는 ①②③ 아래 항목만 가져옵니다.</p>';
+    } else {
+      h+='<div class="paste-prev">'+S.pastePrev.map(function(c,i){
+        return '<label class="paste-row"><input type="checkbox" '+(c.on?'checked':'')+' onchange="actPasteToggle('+i+')">'
+          +'<span class="ptxt">'+esc(c.text)+(c.dup?' <span class="paste-note">(이미 있음)</span>':'')+'</span>'
+          +'<select onchange="actPastePri('+i+',this.value)">'
+          +'<option value="high"'+(c.priority==="high"?' selected':'')+'>높음</option>'
+          +'<option value="mid"'+(c.priority==="mid"?' selected':'')+'>중간</option>'
+          +'<option value="low"'+(c.priority==="low"?' selected':'')+'>낮음</option></select></label>';
+      }).join("")+'</div>'
+      +'<div style="margin-top:8px;display:flex;justify-content:flex-end"><button class="mini fill" onclick="actPasteAdd()">선택한 항목 오늘 TO-DO에 추가</button></div>'
+      +'<p class="paste-note">⚪ 참고·종결과 ④ 해결된 항목은 가져오지 않습니다.</p>';
+    }
+  }
+  return h+'</div>';
+}
+
 function render(){
   var v=document.getElementById("view");
   v.className="";
@@ -1010,6 +1110,7 @@ function render(){
       + listH
       + addFormHTML("inpToday","selToday","actAddToday","오늘 할 일 입력","timeToday")
       + '</div>'
+      + pasteCardHTML()
       + (S.today.todos.length ? '<div class="card"><div class="card-h"><h2>진행 현황</h2></div>'+progressHTML(doneCount,S.today.todos.length)+'</div>' : '');
 
   } else if(S.mode==="out"){
