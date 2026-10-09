@@ -14,11 +14,11 @@
 - 기능: 우선순위(high/mid/low)·시간 지정, 완료 멘트(doneNote), 날짜 이동, 익일 이월(개별/전체), 반복 업무(매주 요일/매월 일자 자동 등록), 자연어 일정 파싱("9/24~27 충칭 출장"), 구글 캘린더 링크·ICS 내보내기(`업무일정.ics`), 주간 요약 복사, JSON 텍스트 내보내기/가져오기(병합).
 
 ## 배포
-- 방식: 정적 파일. wrangler 설정 없음 → Cloudflare Pages(GitHub `elanddenim-bit/to-do-list` main) 정적 배포로 추정. 미확인.
+- 방식: GitHub Pages(main / root). 저장소가 private이면 꺼짐.
 - URL/도메인: 미확인.
 - 바인딩: 없음. 서비스워커 없음.
 - 외부 서비스: Supabase `SUPA_URL=https://emoblnrvyqezitvymwbr.supabase.co`, `SUPA_KEY=sb_publishable_…`(공개키) — index.html 상수. `WORKSPACE`(데이터 행 id = 비밀 코드)는 2026-10-09부터 코드에 없음: 기기마다 처음 한 번 입력 → localStorage `todo.ws`.
-- 시크릿: 없음. GitHub 저장소는 private(2026-10-09 전환). 공개키는 vendor-directory와 같은 Supabase 프로젝트·같은 `workdata` 테이블을 씀.
+- 시크릿: 없음. GitHub 저장소는 public(Pages 때문에 유지). 공개키는 vendor-directory와 같은 Supabase 프로젝트·같은 `workdata` 테이블을 씀.
 
 ## 파일 구조
 - `index.html` — 전체 앱(CSS, HTML, `<script>` 204행~). `LOGO_WHITE` base64 로고.
@@ -58,7 +58,8 @@
 - 한국어 UI. 푸터 "E·LAND GUANGZHOU · 宇旭贸易（上海）有限公司 广州深圳分公司".
 
 ## 주의사항 / 알려진 이슈
-- 2026-10-09 확인: RLS가 없어 공개키만으로 `workdata` 전체 id 목록·데이터 조회 가능했음(vendor-directory 행 포함). 헤더 기반 RLS 적용 전까지는 코드를 숨겨도 목록 조회로 노출됨.
+- 2026-10-09: RLS 없이 공개키만으로 `workdata` 전체 조회 가능했던 것을 확인 → 같은 날 RLS 적용(정책 `ws_only` = 헤더 x-ws와 같은 id 또는 id-bak-%, `vendors_public` = vendor-directory 행만 예외). 공개키만으로 목록을 조회하면 vendors 행 1개만 보임.
+- 배포: GitHub Pages(저장소 public 필요 — 무료 계정은 private 전환 시 Pages가 꺼져 404). 2026-10-09 비공개→공개로 되돌림. 코드에 공간 코드가 없으므로 공개여도 무방.
 - 저장이 전체 DB 통째 upsert(last write wins) — 두 기기 동시 편집 시 한쪽 변경 유실 가능.
 - 서비스워커 없음 → 오프라인에서 새로 열 수 없음. 서버 미연결 시 입력은 세션 동안만 유지.
 - 중국 본토에서 `*.supabase.co` 접속 가능 여부 미확인.
