@@ -17,8 +17,8 @@
 - 방식: 정적 파일. wrangler 설정 없음 → Cloudflare Pages(GitHub `elanddenim-bit/to-do-list` main) 정적 배포로 추정. 미확인.
 - URL/도메인: 미확인.
 - 바인딩: 없음. 서비스워커 없음.
-- 외부 서비스: Supabase `SUPA_URL=https://emoblnrvyqezitvymwbr.supabase.co`, `SUPA_KEY=sb_publishable_…`(공개키), `WORKSPACE="jhpark-…"`(데이터 행 id = 사실상 비밀번호) — 모두 index.html 266–268행 상수.
-- 시크릿: 없음(위 값이 코드에 평문). GitHub 저장소는 public.
+- 외부 서비스: Supabase `SUPA_URL=https://emoblnrvyqezitvymwbr.supabase.co`, `SUPA_KEY=sb_publishable_…`(공개키) — index.html 상수. `WORKSPACE`(데이터 행 id = 비밀 코드)는 2026-10-09부터 코드에 없음: 기기마다 처음 한 번 입력 → localStorage `todo.ws`.
+- 시크릿: 없음. GitHub 저장소는 private(2026-10-09 전환). 공개키는 vendor-directory와 같은 Supabase 프로젝트·같은 `workdata` 테이블을 씀.
 
 ## 파일 구조
 - `index.html` — 전체 앱(CSS, HTML, `<script>` 204행~). `LOGO_WHITE` base64 로고.
@@ -30,8 +30,9 @@
 - 저장: `saveAll()` → `POST /rest/v1/workdata` (Prefer: resolution=merge-duplicates) body `[{id:WORKSPACE, data:DB, updated_at}]`. 전체 DB 를 통째로 upsert.
 - `LOADED=false`(서버 미확인) 상태에서 저장 요청 시 먼저 재로드·병합, 그래도 실패하면 저장 보류 + 배너.
 - 요일별 순환 백업 `snapshotOnce()`: 세션당 1회 `id=<WORKSPACE>-bak-<0..6>` 행에 upsert(최근 7일 복구용).
-- `configured()`: URL https, KEY 30자 초과, WORKSPACE 가 `__` 로 시작하지 않을 때만 클라우드 사용. 아니면 세션 메모리만(배너 경고).
-- localStorage 미사용.
+- `configured()`: URL https, KEY 30자 초과, WORKSPACE 10자 이상일 때만 클라우드 사용. 코드가 없으면 `boot()`가 코드 입력 화면(`showWsGate`)을 띄움.
+- localStorage: `todo.ws`(공간 코드) 하나만. 모든 요청에 헤더 `x-ws: <코드>`를 붙임 → Supabase RLS가 `id = x-ws` 또는 `id LIKE x-ws||'-bak-%'` 행만 허용(RLS 적용은 대시보드에서, 저장소에 SQL 없음).
+- 공간 코드 관리(기록 탭): 입력 시 서버에 그 id가 있어야 통과(없는 코드로 빈 공간 생성 방지). '새 코드로 바꾸기' = 새 id에 DB 저장·확인 → 옛 행은 데이터 유지 + `movedAt` 표시(옛 코드를 기억한 기기는 코드 입력 화면으로) → 새 코드 표시. '이 기기에서 잊기'.
 - 렌더: `render()` 가 `S.mode` 에 따라 `#view` innerHTML 재생성.
 
 ## 데이터
@@ -57,7 +58,7 @@
 - 한국어 UI. 푸터 "E·LAND GUANGZHOU · 宇旭贸易（上海）有限公司 广州深圳分公司".
 
 ## 주의사항 / 알려진 이슈
-- Supabase 접근 정책(RLS) 미확인. `WORKSPACE`를 바꾸면 기존 데이터와 끊기므로 변경은 먼저 확인.
+- 2026-10-09 확인: RLS가 없어 공개키만으로 `workdata` 전체 id 목록·데이터 조회 가능했음(vendor-directory 행 포함). 헤더 기반 RLS 적용 전까지는 코드를 숨겨도 목록 조회로 노출됨.
 - 저장이 전체 DB 통째 upsert(last write wins) — 두 기기 동시 편집 시 한쪽 변경 유실 가능.
 - 서비스워커 없음 → 오프라인에서 새로 열 수 없음. 서버 미연결 시 입력은 세션 동안만 유지.
 - 중국 본토에서 `*.supabase.co` 접속 가능 여부 미확인.

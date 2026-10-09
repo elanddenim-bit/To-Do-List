@@ -273,12 +273,17 @@ function parseScheduleInput(text){
 // 아래 세 값이 설정되면 모든 기기에서 실시간 연동됩니다.
 var SUPA_URL = "https://emoblnrvyqezitvymwbr.supabase.co";      // 예: https://abcdefgh.supabase.co
 var SUPA_KEY = "sb_publishable_vA-lhwZUr9FS-2YGrQHNFA_I1ixtCmk";      // anon public 키
-var WORKSPACE = "jhpark-5d429938cfd26286";    // 내 데이터 공간 이름 (비밀 코드)
+// 내 데이터 공간 코드(비밀 코드). 코드에 적지 않고 기기마다 처음 한 번 입력 → localStorage 'todo.ws'.
+// 서버(Supabase RLS)는 요청 헤더 x-ws 와 같은 id(및 id-bak-N)의 행만 읽고 쓰게 한다.
+var WS_KEY = "todo.ws";
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v); return true; }catch(e){ return false; } }
+var WORKSPACE = lsGet(WS_KEY) || "";
 function configured(){
-  return SUPA_URL.indexOf("https://")===0 && SUPA_KEY.length>30 && WORKSPACE.indexOf("__")!==0;
+  return SUPA_URL.indexOf("https://")===0 && SUPA_KEY.length>30 && WORKSPACE.length>=10;
 }
-function hdrs(extra){
-  var h={"apikey":SUPA_KEY, "Authorization":"Bearer "+SUPA_KEY, "Content-Type":"application/json"};
+function hdrs(extra, ws){
+  var h={"apikey":SUPA_KEY, "Authorization":"Bearer "+SUPA_KEY, "Content-Type":"application/json", "x-ws":(ws||WORKSPACE)};
   if(extra) for(var k in extra) h[k]=extra[k];
   return h;
 }
@@ -298,6 +303,12 @@ async function loadAll(){
       {headers:hdrs()});
     if(!r.ok) throw new Error("서버 응답 "+r.status);
     var arr=await r.json();
+    if(arr.length && arr[0].data && arr[0].data.movedAt){
+      // 이 코드는 새 코드로 옮겨졌다 → 이 기기에서 잊고 새 코드를 받는다 (옛 행에 덮어쓰지 않게)
+      WORKSPACE=""; lsSet(WS_KEY,null); LOADED=false; STORE_OK=false;
+      LAST_ERR="이 코드는 "+arr[0].data.movedAt+"에 새 코드로 바뀌었습니다. 새 코드를 입력하세요.";
+      return;
+    }
     if(arr.length && arr[0].data){
       DB=arr[0].data;
       if(!DB.days) DB.days={};
@@ -373,6 +384,72 @@ async function saveAll(){
     return false;
   }
 }
+// ---------- 공간 코드: 입력 / 새 코드로 바꾸기 / 잊기 ----------
+function newWsId(){
+  var a=new Uint8Array(12);
+  try{ crypto.getRandomValues(a); }catch(e){ for(var i=0;i<a.length;i++) a[i]=Math.floor(Math.random()*256); }
+  return "jhpark-"+Array.prototype.map.call(a,function(b){return ("0"+b.toString(16)).slice(-2);}).join("");
+}
+async function wsExists(code){
+  var r=await fetch(SUPA_URL+"/rest/v1/workdata?id=eq."+encodeURIComponent(code)+"&select=id",{headers:hdrs(null,code)});
+  if(!r.ok) throw new Error("서버 응답 "+r.status);
+  var arr=await r.json();
+  return arr.length===1;
+}
+function wsGateHTML(msg){
+  return '<div class="card"><div class="card-h accent"><h2>공간 코드 입력</h2></div>'
+    +'<p class="hintbox" style="margin-top:10px;">이 기기에서 처음 열었습니다. 내 데이터 공간 코드를 입력하세요. 한 번 입력하면 이 기기에 기억됩니다.</p>'
+    +'<input id="wsIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="jhpark-…" style="width:100%; height:42px; font-size:15px; margin-top:8px; padding:0 10px; border:1px solid var(--hair); border-radius:6px; font-family:inherit;">'
+    +'<button class="mini fill" style="margin-top:10px; height:40px; width:100%;" onclick="actWsEnter()">확인</button>'
+    +'<p id="wsMsg" class="hintbox" style="margin-top:8px; color:var(--red);">'+esc(msg||"")+'</p></div>';
+}
+function showWsGate(msg){
+  var v=document.getElementById("view");
+  if(v){ v.className=""; v.innerHTML=wsGateHTML(msg); }
+}
+window.actWsEnter = async function(){
+  var el=document.getElementById("wsIn"), msg=document.getElementById("wsMsg");
+  var code=(el&&el.value||"").trim();
+  if(code.length<10){ msg.textContent="코드가 너무 짧습니다."; return; }
+  msg.style.color="var(--grey)"; msg.textContent="확인 중…";
+  try{
+    if(!(await wsExists(code))){ msg.style.color="var(--red)"; msg.textContent="없는 코드입니다. 다시 확인하세요."; return; }
+  }catch(e){ msg.style.color="var(--red)"; msg.textContent="서버 연결 실패 — "+((e&&e.message)||e); return; }
+  WORKSPACE=code; lsSet(WS_KEY,code);
+  await boot();
+};
+window.actWsShow = function(){
+  var el=document.getElementById("wsShow");
+  if(el) el.textContent = el.textContent ? "" : WORKSPACE;
+};
+window.actWsForget = function(){
+  if(!window.confirm("이 기기에서 공간 코드를 지울까요? 데이터는 서버에 그대로 있고, 다시 열면 코드를 입력해야 합니다.")) return;
+  lsSet(WS_KEY,null); WORKSPACE=""; LOADED=false; location.reload();
+};
+window.actWsRotate = async function(){
+  var msg=document.getElementById("wsRotMsg");
+  if(!LOADED){ msg.textContent="서버 데이터를 아직 못 읽어서 바꿀 수 없습니다."; return; }
+  if(!window.confirm("새 공간 코드를 만들고 지금 데이터를 옮길까요?\n다른 기기에서는 새 코드를 다시 입력해야 합니다.")) return;
+  var oldId=WORKSPACE, nid=newWsId(), now=new Date().toISOString();
+  msg.textContent="옮기는 중…";
+  try{
+    var r=await fetch(SUPA_URL+"/rest/v1/workdata",{method:"POST",headers:hdrs({"Prefer":"resolution=merge-duplicates"},nid),
+      body:JSON.stringify([{id:nid, data:DB, updated_at:now}])});
+    if(!r.ok) throw new Error("새 코드 저장 실패 "+r.status);
+    var c=await fetch(SUPA_URL+"/rest/v1/workdata?id=eq."+encodeURIComponent(nid)+"&select=data",{headers:hdrs(null,nid)});
+    var arr=c.ok?await c.json():[];
+    if(!arr.length || !arr[0].data || !arr[0].data.days) throw new Error("새 코드 확인 실패");
+    // 옛 행에는 데이터는 그대로 두고 '옮겨짐' 표시만 (옛 코드를 기억한 기기가 덮어쓰지 않게)
+    var old=JSON.parse(JSON.stringify(DB)); old.movedAt=fmtKey(new Date());
+    await fetch(SUPA_URL+"/rest/v1/workdata",{method:"POST",headers:hdrs({"Prefer":"resolution=merge-duplicates"},oldId),
+      body:JSON.stringify([{id:oldId, data:old, updated_at:now}])});
+    WORKSPACE=nid; lsSet(WS_KEY,nid); SNAPPED=false; snapshotOnce();
+    msg.innerHTML='새 코드로 옮겼습니다. 다른 기기에서는 이 코드를 입력하세요:<br><b style="user-select:all; -webkit-user-select:all; font-size:14px; word-break:break-all;">'+esc(nid)+'</b>';
+  }catch(e){
+    msg.textContent="실패 — 지금 코드 그대로 사용 중입니다. ("+((e&&e.message)||e)+")";
+  }
+};
+
 function getDay(key){
   var d = DB.days[key];
   return d ? d : emptyDay();
@@ -1193,6 +1270,16 @@ function render(){
       +'</div>'
       +'<p id="bkMsg" class="hintbox" style="margin-top:8px;"></p>'
       +'<p id="bkDiag" class="hintbox" style="margin-top:2px;"></p>'
+      +'<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--hair);">'
+      +'<div style="font-size:13px; font-weight:700; color:var(--navy);">공간 코드</div>'
+      +'<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
+      +'<button class="mini" onclick="actWsShow()">코드 보기</button>'
+      +'<button class="mini" onclick="actWsRotate()">새 코드로 바꾸기</button>'
+      +'<button class="mini" style="color:var(--red); border-color:var(--red);" onclick="actWsForget()">이 기기에서 잊기</button>'
+      +'</div>'
+      +'<p id="wsShow" class="hintbox" style="margin-top:6px; user-select:all; -webkit-user-select:all; word-break:break-all;"></p>'
+      +'<p id="wsRotMsg" class="hintbox" style="margin-top:2px;"></p>'
+      +'</div>'
       +'<textarea id="bkBox" style="min-height:70px; font-size:11px;" placeholder="내보내기: 버튼을 누르면 전체 데이터가 여기 표시되고 자동 복사됩니다.&#10;가져오기: 이전 카드에서 복사한 내용을 여기 붙여넣고 가져오기 버튼을 누르세요."></textarea>'
       +'</div>';
     runDiag();
@@ -1213,23 +1300,28 @@ function render(){
 
 // ---------- 시작 ----------
 document.getElementById("hdrDate").textContent=fmtDisplay(S.tKey);
-(async function init(){
+async function boot(){
+  if(!WORKSPACE){ showWsGate(); return; }
   try{
     await loadAll();
+    if(!WORKSPACE){ showWsGate(LAST_ERR); return; }
     if(seedRecur()) await saveAll();
     S.today=getDay(S.tKey);
     S.tomorrow=getDay(S.tmKey);
     S.sched=DB.sched;
     S.index=dayIndex();
   }catch(e){}
+  var v=document.getElementById("view"); if(v) v.className="";
   render();
   updateBanner();
-})();
+}
+boot();
 
 // 다른 기기에서 수정한 내용 반영: 화면에 다시 돌아오면 서버에서 새로 불러온다
 document.addEventListener("visibilitychange", async function(){
   if(document.visibilityState==="visible" && configured()){
     await loadAll();
+    if(!WORKSPACE){ showWsGate(LAST_ERR); return; }
     if(seedRecur()) await saveAll();
     S.today=getDay(S.tKey);
     S.tomorrow=getDay(S.tmKey);
