@@ -47,6 +47,10 @@
 - 출근 탭 "메일·위챗 요약 붙여넣기" 카드: 아침 메일 업무표(🔴→high, 🟡→mid, ⚪·제외 무시)나 기업위챗 요약(①③→high, ②→mid, ④ 무시)을 붙여넣으면 `parseBrief()`가 후보를 만들고, 체크한 항목만 오늘 TO-DO에 추가. 앞에 [메일]/[위챗] 표시, 이미 있는 항목(앞 40자 공백 제거 비교)은 기본 해제.
 - 메일 업무표는 별도 예약 작업이 사용자 PC의 Outlook 내보내기 파일로 매일 06:50에 만든다(이 저장소 밖).
 
+## 📲 아이폰 캘린더 자동 동기화 (2026-10-19)
+- 일정 탭 카드 `subscribeCardHTML()`: `webcal://voice.zhnote.net/todo/ics?k=<공간 코드>` 구독 링크 + 주소 복사. 서버는 sz-chinese 저장소 `voice/todo.js`(sz-voice Worker) — 같은 Supabase 공개키 + `x-ws` 로 그 행을 읽어 live ICS(일정 종일 + 시각 있는 TO-DO 30분 블록, ±60일, 완료는 ✓) 를 `no-store` 로 내려 줌. UID 는 `<sched.id>@eland-dailywork` / `todo-<id>@eland-dailywork`(예전 .ics 파일과 같은 UID 규칙).
+- 배경: 소유자가 '전체 캘린더 등록(.ics)' 파일을 네이버 캘린더에 넣어 'TO-DO LIST' 캘린더로 보고 있었는데 한 번 복사라 삭제·추가가 반영되지 않음(2026-10-19). 파일 버튼은 '파일로 받기'로 이름만 바꿔 유지.
+
 ## 도메인 규칙
 - 하루 흐름: 출근 시 오늘 TO-DO 확인 → 퇴근 시 결과 체크·완료 멘트·익일 TO-DO 작성·미완료 이월.
 - 날짜 키는 로컬 시간 `YYYY-MM-DD`(fmtKey). 요일 표기 `WD=["일","월",…,"토"]`.

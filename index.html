@@ -509,6 +509,29 @@ function gcalUrl(s){
 function icsEscape(t){
   return String(t).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
 }
+
+/* 📲 아이폰 캘린더 자동 동기화 — voice.zhnote.net/todo/ics 가 Supabase 를 읽어 live ICS 를 내려 줌(공간 코드는 주소에만). */
+var ICS_HOST = "voice.zhnote.net";
+function icsFeedUrl(){ return WORKSPACE ? "https://"+ICS_HOST+"/todo/ics?k="+encodeURIComponent(WORKSPACE) : ""; }
+function subscribeCardHTML(){
+  if(!WORKSPACE) return "";
+  var u=icsFeedUrl(), w="webcal://"+u.slice(8);
+  return '<div class="card"><div class="card-h"><h2>📲 아이폰 캘린더 자동 동기화</h2></div>'
+    + '<p class="hintbox" style="margin-top:0">여기서 넣고 지운 일정(시각 있는 TO-DO 포함)이 15분 안에 아이폰 캘린더에 그대로 반영됩니다. '
+    + '예전 "파일로 받기"는 한 번 복사라 삭제가 전달되지 않았습니다 — 예전에 넣었던 캘린더(TO-DO LIST 등)는 지우고 이걸로 바꿔 주세요.</p>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">'
+    + '<a class="mini fill" href="'+w+'" style="text-decoration:none">아이폰에서 구독하기</a>'
+    + '<button class="mini" onclick="actCopyFeed(this)">구독 주소 복사</button></div>'
+    + '<p class="hintbox">구독 뒤 설정 → 캘린더 → 계정 → 데이터 업데이트에서 이 구독을 <b>가져오기 · 15분</b>으로. '
+    + '네이버 캘린더에 넣으려면 네이버 캘린더 → 캘린더 추가 → URL 구독에 복사한 주소(네이버는 갱신이 느려 아이폰 직접 구독을 권장). '
+    + '주소에 공간 코드가 들어 있으니 남에게 보내지 마세요.</p></div>';
+}
+window.actCopyFeed = async function(btn){
+  var u=icsFeedUrl(); if(!u) return;
+  try{ await navigator.clipboard.writeText(u); if(btn) btn.textContent="복사 완료"; }
+  catch(e){ window.prompt("이 주소를 복사하세요", u); }
+};
+
 window.actExportICS = function(){
   if(!S.sched.length) return;
   var now=new Date();
@@ -1229,10 +1252,11 @@ function render(){
       + '</div>'
       + recurFormHTML()
       + '<div class="card"><div class="card-h"><h2>캘린더</h2></div>' + calendarHTML() + '</div>'
+      + subscribeCardHTML()
       + '<div class="card"><div class="card-h"><h2>'+(S.calM+1)+'월 일정</h2>'
-      + (S.sched.length ? '<button class="mini fill" onclick="actExportICS()">전체 캘린더 등록 (.ics)</button>' : '')
+      + (S.sched.length ? '<button class="mini" onclick="actExportICS()">파일로 받기 (.ics)</button>' : '')
       + '</div>' + schedListHTML()
-      + (S.sched.length ? '<p class="hintbox">전체 캘린더 등록: 등록된 모든 일정이 담긴 캘린더 파일이 다운로드됩니다. '
+      + (S.sched.length ? '<p class="hintbox">파일로 받기: 등록된 모든 일정이 담긴 캘린더 파일이 한 번 다운로드됩니다(자동 갱신 안 됨 — 위 구독을 쓰세요). '
         + 'PC는 구글 캘린더 → 설정 → 가져오기에서 이 파일을 선택하고, 휴대폰은 다운로드된 파일을 열면 캘린더 앱이 바로 받아줍니다. '
         + '같은 파일을 다시 가져와도 일정이 중복 생성되지 않습니다.</p>' : '')
       + '</div>';
