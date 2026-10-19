@@ -525,11 +525,11 @@ function todoApi(path, body){
 function scheduleNaverSync(){ if(!WORKSPACE) return; clearTimeout(NSYNC.t); NSYNC.t=setTimeout(function(){ runNaverSync(false); }, 2500); }
 async function runNaverSync(force, btn){
   if(!WORKSPACE || NSYNC.busy) return; NSYNC.busy=true;
-  if(btn) btn.textContent="동기화 중…";
+  var label=btn?btn.textContent:""; if(btn) btn.textContent="동기화 중…";
   var r=null;
   for(var i=0;i<6;i++){ r=await todoApi("/todo/sync",{force:!!(force&&i===0)}); if(!r || r.error || !r.ok || !r.left) break; }
   NSYNC.busy=false; NSYNC.st=r; paintNaverSync();
-  if(btn) btn.textContent="지금 동기화";
+  if(btn) btn.textContent=label;
 }
 async function loadNaverStatus(){ if(!WORKSPACE) return; NSYNC.st=await todoApi("/todo/status"); paintNaverSync(); }
 function fmtAgo(t){ if(!t) return "아직 없음"; var m=Math.round((Date.now()-t)/60000); return m<1?"방금":(m<60?m+"분 전":Math.round(m/60)+"시간 전"); }
@@ -554,7 +554,7 @@ function subscribeCardHTML(){
     + '<button class="mini fill" onclick="runNaverSync(false,this)">지금 동기화</button>'
     + '<button class="mini" onclick="if(confirm(\'네이버에 전부 다시 올립니다. 계속할까요?\'))runNaverSync(true,this)">전부 다시 올리기</button>'
     + '<a class="mini" href="'+w+'" style="text-decoration:none">아이폰 직접 구독(선택)</a></div>'
-    + '<p class="hintbox">네이버 웹에 "업무 일정" 캘린더가 없으면 먼저 하나 만들어 주세요(이름 그대로). 예전에 파일로 넣었던 "TO-DO LIST" 캘린더는 삭제하세요 — 거기 남은 건 갱신되지 않습니다.</p></div>';
+    + '<p class="hintbox">네이버 웹에 "업무일정" 캘린더가 없으면 먼저 하나 만들어 주세요(띄어쓰기는 상관없음). 예전에 파일로 넣었던 "TO-DO LIST" 캘린더는 삭제하세요 — 거기 남은 건 갱신되지 않습니다.</p></div>';
 }
 window.actCopyFeed = async function(btn){
   var u=icsFeedUrl(); if(!u) return;
