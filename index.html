@@ -1221,6 +1221,107 @@ function pasteCardHTML(){
   return h+'</div>';
 }
 
+
+// ---------- Claude 일정 붙여넣기 (2026-10-27) ----------
+// Claude가 정리해 준 줄 단위 일정을 그대로 붙여넣으면 날짜별 TO-DO(시간 있음) 또는 일정(종일·기간)으로 나눈다.
+// 한 줄 형식: 2026-10-28 09:00-10:50 제목 @장소 !   (날짜는 2026-10-28 / 10/28 / 10.28, 기간은 10/31~11/4, 끝의 ! = 높음)
+function clNormDate(y,m,d){ return y+"-"+pad(+m)+"-"+pad(+d); }
+function parseClaudeSched(text){
+  var lines=String(text||"").split(/\r?\n/), out=[], now=new Date(), cy=now.getFullYear();
+  var dre=/^(?:(20\d{2})[-.\/])?(\d{1,2})[-.\/](\d{1,2})(?:\s*\([^)]*\))?(?:\s*[~\-–]\s*(?:(?:(20\d{2})[-.\/])?(\d{1,2})[-.\/])?(\d{1,2})(?:\s*\([^)]*\))?)?\s+/;
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].replace(/^[\s\-•·*]+/,"").replace(/\*\*/g,"").trim();
+    if(!l || /^#/.test(l)) continue;
+    var m=l.match(dre); if(!m) continue;
+    var y1=m[1]||cy, sm=m[2], sd=m[3];
+    var start=clNormDate(y1,sm,sd), end=start;
+    if(m[6]){ var ey=m[4]||y1, em=m[5]||sm; end=clNormDate(ey,em,m[6]); if(end<start) end=clNormDate(+ey+1,em,m[6]); }
+    var rest=l.slice(m[0].length).trim();
+    var pri="mid";
+    if(/\s*!$/.test(rest)){ pri="high"; rest=rest.replace(/\s*!$/,""); }
+    var tm=rest.match(/^(\d{1,2}):(\d{2})(?:\s*[~\-–]\s*(\d{1,2}):(\d{2}))?\s+/);
+    var time="", endTime="";
+    if(tm){ time=pad(+tm[1])+":"+tm[2]; if(tm[3]) endTime=pad(+tm[3])+":"+tm[4]; rest=rest.slice(tm[0].length).trim(); }
+    if(!rest) continue;
+    if(time && start===end){
+      var txt=rest; if(endTime) txt=txt.replace(/(\s@|$)/," (~"+endTime+")$1");
+      out.push({kind:"todo", date:start, time:time, text:txt, priority:pri, on:true});
+    } else {
+      out.push({kind:"sched", start:start, end:end, title:(time?time+" ":"")+rest, on:true});
+    }
+  }
+  return out;
+}
+function clMarkDup(list){
+  list.forEach(function(c){
+    if(c.kind==="todo"){
+      var d=(c.date===S.tKey)?S.today:(c.date===S.tmKey)?S.tomorrow:getDay(c.date);
+      c.dup=d.todos.some(function(x){return briefNorm(x.text)===briefNorm(c.text) && (x.time||"")===c.time;});
+    } else {
+      c.dup=S.sched.some(function(x){return x.title===c.title && x.start===c.start && x.end===c.end;});
+    }
+    if(c.dup) c.on=false;
+  });
+  return list;
+}
+window.actClParse = function(){
+  var ta=document.getElementById("inpCl"); if(!ta) return;
+  S.clText=ta.value; S.clPrev=clMarkDup(parseClaudeSched(ta.value)); render();
+};
+window.actClToggle = function(i){ if(S.clPrev&&S.clPrev[i]) S.clPrev[i].on=!S.clPrev[i].on; };
+window.actClAdd = async function(){
+  var picks=(S.clPrev||[]).filter(function(c){return c.on;});
+  if(!picks.length){ S.clPrev=null; render(); return; }
+  setDay(S.tKey,S.today); setDay(S.tmKey,S.tomorrow); DB.sched=S.sched;
+  var firstDate=null;
+  picks.forEach(function(c){
+    if(c.kind==="todo"){
+      if(!DB.days[c.date]) DB.days[c.date]=emptyDay();
+      DB.days[c.date].todos.push({id:uid(), text:c.text, priority:c.priority, done:false, time:c.time, src:"claude"});
+      if(!firstDate||c.date<firstDate) firstDate=c.date;
+    } else {
+      DB.sched.push({id:uid(), title:c.title, start:c.start, end:c.end});
+      if(!firstDate||c.start<firstDate) firstDate=c.start;
+    }
+  });
+  DB.sched.sort(function(a,b){return a.start<b.start?-1:1;});
+  S.today=getDay(S.tKey); S.tomorrow=getDay(S.tmKey); S.sched=DB.sched; S.index=dayIndex();
+  if(firstDate){ var fd=parseKey(firstDate); S.calY=fd.getFullYear(); S.calM=fd.getMonth(); }
+  S.clMsg=picks.length+"건을 추가했습니다.";
+  S.clPrev=null; S.clText="";
+  render();
+  setSaveMsg(await saveAll());
+};
+window.actClClose = function(){ S.clPrev=null; S.clText=""; S.clMsg=""; S.clOpen=!S.clOpen; render(); };
+function claudeCardHTML(){
+  if(!S.clOpen){
+    return '<div class="card"><div class="card-h"><h2>Claude 일정 붙여넣기</h2>'
+      +'<button class="mini" onclick="actClClose()">열기</button></div>'
+      +'<p class="paste-note">Claude가 정리해 준 일정 목록을 붙여넣으면 날짜별 TO-DO와 일정으로 한 번에 넣어 줍니다.'+(S.clMsg?' <b>'+esc(S.clMsg)+'</b>':'')+'</p></div>';
+  }
+  var h='<div class="card"><div class="card-h"><h2>Claude 일정 붙여넣기</h2>'
+    +'<button class="mini" onclick="actClClose()">닫기</button></div>'
+    +'<textarea id="inpCl" rows="6" placeholder="2026-10-28 09:00-10:50 CFO 이사님 공상국 업무 @白云区政务服务中心 !&#10;2026-10-31~11-04 캔톤페어 3기">'+esc(S.clText||"")+'</textarea>'
+    +'<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end">'
+    +'<button class="mini fill" onclick="actClParse()">미리보기</button></div>';
+  if(S.clPrev){
+    if(!S.clPrev.length){
+      h+='<p class="paste-note">날짜로 시작하는 줄을 찾지 못했습니다. 예) 2026-10-28 09:00 회의</p>';
+    } else {
+      h+='<div class="paste-prev">'+S.clPrev.map(function(c,i){
+        var label=c.kind==="todo"
+          ? fmtShort(c.date)+' '+c.time+' · '+esc(c.text)+(c.priority==="high"?' <b style="color:var(--red)">높음</b>':'')
+          : '[일정] '+fmtShort(c.start)+(c.end!==c.start?' ~ '+fmtShort(c.end):'')+' · '+esc(c.title);
+        return '<label class="paste-row"><input type="checkbox" '+(c.on?'checked':'')+' onchange="actClToggle('+i+')">'
+          +'<span class="ptxt">'+label+(c.dup?' <span class="paste-note">(이미 있음)</span>':'')+'</span></label>';
+      }).join("")+'</div>'
+      +'<div style="margin-top:8px;display:flex;justify-content:flex-end"><button class="mini fill" onclick="actClAdd()">선택한 항목 추가</button></div>'
+      +'<p class="paste-note">시간이 있는 줄은 그날 TO-DO(네이버 캘린더 30분 블록), 시간이 없거나 기간인 줄은 일정으로 들어갑니다.</p>';
+    }
+  }
+  return h+'</div>';
+}
+
 function render(){
   var v=document.getElementById("view");
   v.className="";
@@ -1279,6 +1380,7 @@ function render(){
       + '등록된 일정은 해당 날짜의 출근·퇴근 화면 상단에 자동으로 표시되고, '
       + 'G캘린더 버튼을 누르면 구글 캘린더(휴대폰 캘린더)에 바로 추가할 수 있습니다.</p>'
       + '</div>'
+      + claudeCardHTML()
       + recurFormHTML()
       + '<div class="card"><div class="card-h"><h2>캘린더</h2></div>' + calendarHTML() + '</div>'
       + subscribeCardHTML()
