@@ -1150,7 +1150,7 @@ function schedListHTML(){
     var t=o.t;
     rows.push({k:o.date+" "+t.time, h:'<div class="schrow"><span class="bar-mark" style="background:var(--navy)"></span>'
       +'<span class="schdate">'+fmtShort(o.date)+' '+esc(t.time)+'</span>'
-      +'<span class="schtxt">'+(t.done?'✓ ':'')+esc(t.text)+' <span style="font-size:11px;color:var(--grey)">TO-DO</span></span>'
+      +'<span class="schtxt">'+(t.done?'✓ ':'')+esc(t.text)+' <span style="font-size:11px;color:var(--grey);white-space:nowrap">TO-DO</span></span>'
       +'<button class="del" onclick="actDelTimed(\''+o.date+'\',\''+t.id+'\')" aria-label="삭제">×</button></div>'});
   });
   rows.sort(function(a,b){ return a.k<b.k?-1:(a.k>b.k?1:0); });
