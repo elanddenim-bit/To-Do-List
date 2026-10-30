@@ -494,6 +494,17 @@ var S = {
   calM: _now.getMonth()   // 0-based
 };
 
+// 시간 지정 TO-DO(날짜별) — 일정 탭 캘린더·월 목록에도 보이게
+function dayObjFor(key){ return key===S.tKey?S.today:(key===S.tmKey?S.tomorrow:getDay(key)); }
+function timedTodosIn(from,to){
+  var keys={}, out=[];
+  Object.keys(DB.days).forEach(function(k){ keys[k]=1; }); keys[S.tKey]=1; keys[S.tmKey]=1;
+  Object.keys(keys).forEach(function(k){
+    if(k<from||k>to) return;
+    (dayObjFor(k).todos||[]).forEach(function(t){ if(t.time) out.push({date:k, t:t}); });
+  });
+  return out.sort(function(a,b){ var x=a.date+a.t.time, y=b.date+b.t.time; return x<y?-1:(x>y?1:0); });
+}
 function schedulesFor(key){
   return S.sched.filter(function(s){ return s.start<=key && key<=s.end; })
     .sort(function(a,b){ return a.start<b.start?-1:1; });
@@ -1008,6 +1019,14 @@ window.actAddSched = function(){
   var sd=parseKey(p.start); S.calY=sd.getFullYear(); S.calM=sd.getMonth();
   persistSched(); render();
 };
+window.actDelTimed = async function(date,id){
+  if(!confirm("이 TO-DO를 삭제할까요?")) return;
+  var d=dayObjFor(date);
+  d.todos=(d.todos||[]).filter(function(x){return x.id!==id;});
+  if(date===S.tKey) S.today=d; else if(date===S.tmKey) S.tomorrow=d;
+  setDay(date,d); S.index=dayIndex(); render();
+  setSaveMsg(await saveAll());
+};
 window.actDelSched = function(id){
   S.sched=S.sched.filter(function(x){return x.id!==id;});
   persistSched(); render();
@@ -1105,7 +1124,7 @@ function calendarHTML(){
   for(var i=0;i<startWd;i++) h+='<div class="cell off"></div>';
   for(var d=1;d<=dim;d++){
     var key=y+"-"+pad(m+1)+"-"+pad(d);
-    var has=schedulesFor(key).length>0;
+    var has=schedulesFor(key).length>0 || timedTodosIn(key,key).length>0;
     var isT=(key===S.tKey);
     var wd=(startWd+d-1)%7;
     h+='<div class="cell"><span class="n'+(isT?' today':(wd===0?' sun':''))+'">'+d+'</span>'
@@ -1118,14 +1137,24 @@ function schedListHTML(){
   var y=S.calY, mm=pad(S.calM+1);
   var mStart=y+"-"+mm+"-01", mEnd=y+"-"+mm+"-31";
   var list=S.sched.filter(function(s){ return s.start<=mEnd && s.end>=mStart; });
-  if(!list.length) return '<p class="empty">이 달에 등록된 일정이 없습니다.</p>';
-  return list.map(function(s){
-    return '<div class="schrow"><span class="bar-mark"></span>'
+  var timed=timedTodosIn(mStart,mEnd);
+  if(!list.length && !timed.length) return '<p class="empty">이 달에 등록된 일정이 없습니다.</p>';
+  var rows=list.map(function(s){
+    return {k:s.start, h:'<div class="schrow"><span class="bar-mark"></span>'
       +'<span class="schdate">'+schedRangeLabel(s)+'</span>'
       +'<span class="schtxt">'+esc(s.title)+'</span>'
       +'<a class="mini" href="'+gcalUrl(s)+'" target="_blank" rel="noopener">G캘린더</a>'
-      +'<button class="del" onclick="actDelSched(\''+s.id+'\')" aria-label="삭제">×</button></div>';
-  }).join("");
+      +'<button class="del" onclick="actDelSched(\''+s.id+'\')" aria-label="삭제">×</button></div>'};
+  });
+  timed.forEach(function(o){
+    var t=o.t;
+    rows.push({k:o.date+" "+t.time, h:'<div class="schrow"><span class="bar-mark" style="background:var(--navy)"></span>'
+      +'<span class="schdate">'+fmtShort(o.date)+' '+esc(t.time)+'</span>'
+      +'<span class="schtxt">'+(t.done?'✓ ':'')+esc(t.text)+' <span style="font-size:11px;color:var(--grey)">TO-DO</span></span>'
+      +'<button class="del" onclick="actDelTimed(\''+o.date+'\',\''+t.id+'\')" aria-label="삭제">×</button></div>'});
+  });
+  rows.sort(function(a,b){ return a.k<b.k?-1:(a.k>b.k?1:0); });
+  return rows.map(function(r){ return r.h; }).join("");
 }
 
 // ---------- 화면 ----------
